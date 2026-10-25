@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">和 pi 开始对话，或直接对它说话</string>
+    <string name="tile_label">新建 pi 对话</string>
+    <string name="agent_activity">agent 运行中</string>
+    <string name="agent_updates">agent 通知</string>
+    <string name="agent_working">agent 正在工作</string>
+    <string name="background_active">后台任务进行中</string>
+</resources>

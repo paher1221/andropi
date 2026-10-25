@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Start a chat with pi or talk to it</string>
+    <string name="tile_label">New pi chat</string>
+    <string name="agent_activity">Agent activity</string>
+    <string name="agent_updates">Agent updates</string>
+    <string name="agent_working">Agent is working</string>
+    <string name="background_active">Background tasks active</string>
+</resources>
