@@ -9,6 +9,7 @@ import '../agent/agent_controller.dart';
 import '../agent/integrations.dart';
 import '../agent/models.dart';
 import 'i18n.dart';
+import 'chat_extras.dart';
 import 'chat_screen.dart';
 import 'folder_picker.dart';
 import 'kit.dart';
