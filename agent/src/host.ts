@@ -205,18 +205,6 @@ function syncTools() {
 		s._customTools = tools.definitions;
 		s._allowedToolNames = new Set(tools.names);
 		s._refreshToolRegistry({ activeToolNames: tools.names, includeAllExtensionTools: true });
-		// Say it out loud, so "did the new tool land?" is answerable from the chat.
-		const before = new Set(toolSignature ? toolSignature.split(",") : []);
-		// Only MCP names are interesting here; the builtins never change.
-		const added = tools.names.filter((n) => n.startsWith("mcp_") && !before.has(n));
-		const removed = [...before].filter((n) => n.startsWith("mcp_") && !tools.names.includes(n));
-		const mcpNames = tools.names.filter((n) => n.startsWith("mcp_"));
-		if (added.length || removed.length) {
-			const what = [added.length ? `+${added.join(", ")}` : "", removed.length ? `-${removed.join(", ")}` : ""]
-				.filter(Boolean)
-				.join(" ");
-			send({ type: "notice", message: `MCP tools ${what} (${mcpNames.length} from MCP servers)` });
-		}
 		toolSignature = signature;
 		dumpTools("sync");
 		send({ type: "state", state: state() });

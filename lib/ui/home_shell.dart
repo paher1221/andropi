@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -475,6 +476,19 @@ class _ChatsTabState extends State<_ChatsTab> {
 
   AgentController get agent => widget.agent;
 
+  @override
+  void initState() {
+    super.initState();
+    // Deleting a project removes its chats; keep this list in step.
+    widget.agent.integrations.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    widget.agent.integrations.removeListener(_reload);
+    super.dispose();
+  }
+
   void _reload() => setState(() {
     sessions = agent.listSessions();
   });
@@ -649,6 +663,61 @@ class _ProjectsTabState extends State<_ProjectsTab> {
     if (mounted) await openChat(context, agent);
   }
 
+  Future<void> _menu(ProjectInfo pr) async {
+    final activeHere = agent.cwd == pr.path || agent.cwd.startsWith('${pr.path}/');
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: SettingsGroup(
+            children: [
+              SettingsRow(
+                icon: LucideIcons.trash2,
+                color: context.palette.danger,
+                title: tr('Delete project'),
+                subtitle: activeHere ? tr('Open another chat first') : tr('Removes the folder and its chats'),
+                destructive: true,
+                onTap: activeHere ? null : () => Navigator.pop(context, 'delete'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    final chats = [
+      for (final s in await agent.listSessions())
+        if (s.cwd == pr.path || s.cwd.startsWith('${pr.path}/')) s,
+    ];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tr('Delete project')),
+        content: Text(
+          chats.isEmpty
+              ? tr('The folder and everything in it will be removed.')
+              : '${chats.length} ${tr('chats will be deleted too.')} ${tr('The folder and everything in it will be removed.')}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(tr('Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(tr('Delete'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      for (final s in chats) {
+        await agent.deleteSession(s.path);
+      }
+      Directory(pr.path).deleteSync(recursive: true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+    it.refreshProjects();
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -739,6 +808,7 @@ class _ProjectsTabState extends State<_ProjectsTab> {
                         final pr = projects[i];
                         return GestureDetector(
                           onTap: () => _open(pr),
+                          onLongPress: () => _menu(pr),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
