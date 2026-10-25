@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,8 +9,6 @@ import '../agent/agent_controller.dart';
 import '../agent/integrations.dart';
 import '../agent/models.dart';
 import 'i18n.dart';
-import 'accounts_screen.dart';
-import 'chat_extras.dart';
 import 'chat_screen.dart';
 import 'folder_picker.dart';
 import 'kit.dart';
@@ -19,10 +16,7 @@ import 'illustration.dart';
 import 'mesh.dart';
 import 'new_chat_sheet.dart';
 import 'repos_screen.dart';
-import 'settings_hub.dart';
-import 'providers_screen.dart';
 import 'skills_screen.dart';
-import 'tasks_screen.dart';
 import 'theme.dart';
 
 /// Opens the chat for the agent's current session.
@@ -32,12 +26,19 @@ Future<void> openChat(
   String? prompt,
   List<Attachment> attachments = const [],
   bool listen = false,
-}) => Navigator.of(context).push(
-  MaterialPageRoute(
-    builder: (_) =>
-        ChatScreen(agent: agent, initialPrompt: prompt, initialAttachments: attachments, listenOnOpen: listen),
-  ),
-);
+}) async {
+  final shell = context.findAncestorStateOfType<_HomeShellState>();
+  if (shell != null) {
+    shell._revealChat(prompt: prompt, attachments: attachments, listen: listen);
+    return;
+  }
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) =>
+          ChatScreen(agent: agent, initialPrompt: prompt, initialAttachments: attachments, listenOnOpen: listen),
+    ),
+  );
+}
 
 /// The app's home: tabs plus a floating navigation bar.
 class HomeShell extends StatefulWidget {
@@ -50,6 +51,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int tab = 0;
+  final chatKey = GlobalKey<ChatScreenState>();
   final subs = <StreamSubscription<Object?>>[];
   AppLifecycleState lifecycle = AppLifecycleState.resumed;
   int approvalsSeen = 0;
@@ -119,33 +121,45 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         await _newChat();
       case 'voice':
         await agent.newSession();
-        if (mounted) await openChat(context, agent, listen: true);
+        if (mounted) _revealChat(listen: true);
       case 'share':
         final files = [
           for (final f in (launch['files'] as List? ?? const []).cast<Map>())
             Attachment(f['path'] as String, f['name'] as String, mime: f['mime'] as String?),
         ];
         await agent.newSession();
-        if (mounted) await openChat(context, agent, prompt: launch['text'] as String?, attachments: files);
+        if (mounted) _revealChat(prompt: launch['text'] as String?, attachments: files);
     }
   }
 
   Future<void> _newChat() async {
     final before = agent.sessionId;
     await showNewChatSheet(context, agent);
-    if (mounted && agent.sessionId != before) await openChat(context, agent);
+    if (mounted && agent.sessionId != before) _revealChat();
+  }
+
+  void _revealChat({
+    String? prompt,
+    List<Attachment> attachments = const [],
+    bool listen = false,
+  }) {
+    if (tab != 0) setState(() => tab = 0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      chatKey.currentState?.applyLaunch(prompt: prompt, attachments: attachments, listen: listen);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      _HomeTab(agent: agent, onSeeAll: () => setState(() => tab = 1), onNewChat: _newChat),
+      ChatScreen(key: chatKey, agent: agent, embedded: true),
       _ChatsTab(agent: agent),
       SkillsScreen(agent: agent, embedded: true),
       _ProjectsTab(agent: agent),
     ];
     return Scaffold(
       extendBody: true,
+      resizeToAvoidBottomInset: false,
       // Every tab stays built (scroll positions survive); the active one fades
       // and drifts in, the others fade out and stop ticking.
       body: Stack(
@@ -384,406 +398,6 @@ class _CreateButtonState extends State<_CreateButton> {
               duration: Duration(milliseconds: 420),
               curve: Curves.easeOutBack,
               child: Icon(LucideIcons.plus, size: 28, color: Colors.white),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Home
-
-class _Quick {
-  _Quick(this.title, this.icon, this.color, this.category, this.art, {this.prompt, this.clone = false});
-  final String title;
-
-  /// Storyset illustration shown on the card.
-  final String art;
-  final IconData icon;
-  final Color color;
-  final String category;
-  final String? prompt;
-  final bool clone;
-}
-
-final _quick = [
-  _Quick(
-    tr('Build a web app'),
-    LucideIcons.layoutTemplate,
-    Color(0xFFFF7A1A),
-    'Build',
-    'projects',
-    prompt: tr('Build me a polished, mobile-first web app: '),
-  ),
-  _Quick(tr('Chat with the smartest agent'), LucideIcons.sparkles, Color(0xFF7C5CFC), 'Code', 'ai'),
-  _Quick(tr('Clone a GitHub repo'), SimpleIcons.github, Color(0xFF111113), 'Code', 'git', clone: true),
-  _Quick(
-    tr('Design a modern UI'),
-    LucideIcons.palette,
-    Color(0xFF14B8A6),
-    'Build',
-    'design',
-    prompt: tr('Using the ui-designer skill, design and build a modern screen for: '),
-  ),
-  _Quick(
-    tr('Python in Linux'),
-    SimpleIcons.python,
-    Color(0xFF3B82F6),
-    'Ops',
-    'python',
-    prompt: tr('Set up a Python project in the Linux container and write a script that '),
-  ),
-  _Quick(tr('Fix a bug'), LucideIcons.bug, Color(0xFFEF4444), 'Code', 'bug', prompt: tr('Help me find and fix this bug: ')),
-  _Quick(
-    tr('Deploy a site'),
-    LucideIcons.rocket,
-    Color(0xFFEC4899),
-    'Ops',
-    'launch',
-    prompt: tr('Deploy this project and give me the live URL. Project: '),
-  ),
-  _Quick(
-    tr('Automate a task'),
-    LucideIcons.zap,
-    Color(0xFFF59E0B),
-    'Ops',
-    'automate',
-    prompt: tr('Write a script that automates: '),
-  ),
-];
-
-class _HomeTab extends StatefulWidget {
-  const _HomeTab({required this.agent, required this.onSeeAll, required this.onNewChat});
-  final AgentController agent;
-  final VoidCallback onSeeAll;
-  final VoidCallback onNewChat;
-
-  @override
-  State<_HomeTab> createState() => _HomeTabState();
-}
-
-class _HomeTabState extends State<_HomeTab> {
-  String category = 'All';
-  late Future<List<SessionSummary>> recent = widget.agent.listSessions();
-
-  AgentController get agent => widget.agent;
-
-  void _refresh() => setState(() {
-    recent = agent.listSessions();
-  });
-
-  Future<void> _run(_Quick q) async {
-    if (q.clone) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReposScreen(agent: agent)));
-      _refresh();
-      return;
-    }
-    if (q.prompt == null) {
-      widget.onNewChat();
-      return;
-    }
-    // Each quick start gets its own project folder.
-    final ws = agent.info['workspace'] as String? ?? '';
-    final slug = q.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');
-    final n = DateTime.now();
-    final dir = Directory('$ws/$slug-${n.month}${n.day}-${n.hour}${n.minute.toString().padLeft(2, '0')}')
-      ..createSync(recursive: true);
-    await agent.newSession(dir: dir.path);
-    if (mounted) await openChat(context, agent, prompt: q.prompt);
-    _refresh();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final text = Theme.of(context).textTheme;
-    return ListenableBuilder(
-      listenable: Listenable.merge([agent, agent.integrations, agent.features]),
-      builder: (context, _) {
-        final gh = agent.integrations.github;
-        final running = agent.features.runs.where((r) => r.active).length;
-        final name = (gh?.name ?? gh?.login ?? 'there').split(' ').first;
-        final quick = _quick.where((q) => category == 'All' || q.category == category).toList();
-        return SafeArea(
-          bottom: false,
-          child: RefreshIndicator(
-            onRefresh: () async => _refresh(),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 130),
-              children: [
-                Row(
-                  children: [
-                    _CircleButton(
-                      icon: LucideIcons.alignLeft,
-                      label: tr('Settings'),
-                      onTap: () async {
-                        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsHub(agent: agent)));
-                        _refresh();
-                      },
-                    ),
-                    const Spacer(),
-                    Badge(
-                      isLabelVisible: running > 0,
-                      label: Text('$running'),
-                      backgroundColor: p.accent,
-                      child: _CircleButton(
-                        icon: LucideIcons.listTodo,
-                        label: tr('Tasks'),
-                        onTap: () =>
-                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => TasksScreen(agent: agent))),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: () =>
-                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => AccountsScreen(agent: agent))),
-                      child: Avatar(name: gh?.name ?? gh?.login ?? 'AndroPI', url: gh?.avatarUrl, size: 44),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 26),
-                Text('${tr('Hello,')}\n$name', style: text.displayMedium),
-                const SizedBox(height: 8),
-                Text(
-                  agent.hasModel ? tr('What should we build today?') : tr('Connect a model to get started.'),
-                  style: text.bodyLarge?.copyWith(color: p.muted),
-                ),
-                if (!agent.hasModel) ...[const SizedBox(height: 18), _ConnectCard(agent: agent)],
-                const SizedBox(height: 22),
-                SizedBox(
-                  height: 38,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      for (final c in const ['All', 'Build', 'Code', 'Ops'])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _PillChip(
-                            label: tr(c == 'All' ? tr('All types') : c),
-                            selected: category == c,
-                            onTap: () => setState(() => category = c),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 218,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    itemCount: quick.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 12),
-                    itemBuilder: (context, i) => _QuickCard(q: quick[i], onTap: () => _run(quick[i])),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                Row(
-                  children: [
-                    Expanded(child: Text(tr('Recent'), style: text.titleLarge)),
-                    TextButton(
-                      onPressed: widget.onSeeAll,
-                      style: TextButton.styleFrom(foregroundColor: const Color(0xFF3E63DD)),
-                      child: Text(tr('See all')),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                FutureBuilder<List<SessionSummary>>(
-                  future: recent,
-                  builder: (context, snap) {
-                    final list = (snap.data ?? const <SessionSummary>[])
-                        .where((s) => s.messageCount > 0)
-                        .take(5)
-                        .toList();
-                    if (!snap.hasData) return const SizedBox(height: 60);
-                    if (list.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Text(tr('Your chats will show up here.'), style: text.bodySmall),
-                      );
-                    }
-                    return Column(
-                      children: [
-                        for (final s in list)
-                          _SessionRow(
-                            session: s,
-                            workspace: agent.info['workspace'] as String? ?? '',
-                            onTap: () async {
-                              if (s.id != agent.sessionId) await agent.openSession(s.path);
-                              if (context.mounted) await openChat(context, agent);
-                              _refresh();
-                            },
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Shown until a model provider is connected.
-class _ConnectCard extends StatelessWidget {
-  const _ConnectCard({required this.agent});
-  final AgentController agent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(color: const Color(0xFF111113), borderRadius: BorderRadius.circular(24)),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          const Positioned(right: -8, bottom: -6, child: Illustration('connect', height: 128)),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tr('Connect a model'),
-                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  tr('Sign in to a provider or add an API key: Anthropic, OpenAI, Gemini, OpenRouter and more.'),
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13, height: 1.45),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF111113),
-                    minimumSize: const Size(0, 44),
-                  ),
-                  onPressed: () =>
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProvidersScreen(agent: agent))),
-                  child: Text(tr('Choose a model')),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({required this.icon, required this.onTap, required this.label});
-  final IconData icon;
-  final VoidCallback onTap;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Semantics(
-      button: true,
-      label: label,
-      child: Material(
-        color: p.surface,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox.square(dimension: 44, child: Icon(icon, size: 20, color: p.text)),
-        ),
-      ),
-    );
-  }
-}
-
-class _PillChip extends StatelessWidget {
-  const _PillChip({required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Material(
-      color: selected ? p.text : Colors.transparent,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: selected ? p.inverse : p.muted),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickCard extends StatelessWidget {
-  const _QuickCard({required this.q, required this.onTap});
-  final _Quick q;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return SizedBox(
-      width: 164,
-      child: Material(
-        color: p.surface,
-        borderRadius: BorderRadius.circular(24),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: 122,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned.fill(
-                        child: MeshArt(
-                          seed: q.title,
-                          radius: 19,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-                            child: Center(child: Illustration(q.art, height: 112)),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 10,
-                        bottom: -18,
-                        child: RingBadge(icon: q.icon, color: q.color),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 26, 10, 0),
-                  child: Text(
-                    tr(q.title),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3),
-                  ),
-                ),
-              ],
             ),
           ),
         ),

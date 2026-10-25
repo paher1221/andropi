@@ -136,6 +136,11 @@ const _id = <String, String>{
   'Ask pi anything': 'Tanya pi apa saja',
   'Queue a follow-up…': 'Antrekan pesan berikutnya…',
   'Ask pi to build, fix or deploy…': 'Minta pi bikin, perbaiki, atau deploy…',
+  'Ask pi to build, fix or deploy.': 'Minta pi bikin, perbaiki, atau deploy.',
+  'What should we build?': 'Mau bikin apa?',
+  'Connect a model to begin': 'Hubungkan model untuk mulai',
+  'Sign in to a provider or add an API key to choose its model.':
+      'Masuk ke provider atau tambahkan API key untuk memilih model.',
   'Plan mode': 'Mode rencana',
   // Chat extras
   'Allow': 'Izinkan',

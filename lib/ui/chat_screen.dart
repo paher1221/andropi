@@ -10,16 +10,13 @@ import 'chat_extras.dart';
 import 'deploy_sheet.dart';
 import 'message_views.dart';
 
-import 'package:simple_icons/simple_icons.dart';
-
-import 'repos_screen.dart';
+import 'folder_picker.dart';
 import 'kit.dart';
-import 'illustration.dart';
 import 'model_sheet.dart';
+import 'settings_hub.dart';
 import 'tasks_screen.dart';
 import 'terminal_screen.dart';
 import 'providers_screen.dart';
-import 'folder_picker.dart';
 import 'theme.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -29,6 +26,7 @@ class ChatScreen extends StatefulWidget {
     this.initialPrompt,
     this.initialAttachments = const [],
     this.listenOnOpen = false,
+    this.embedded = false,
   });
   final AgentController agent;
 
@@ -39,11 +37,14 @@ class ChatScreen extends StatefulWidget {
   /// Start voice input right away (the widget's Voice button).
   final bool listenOnOpen;
 
+  /// Shown as the home tab: no back button, extra bottom inset for the nav bar.
+  final bool embedded;
+
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<ChatScreen> createState() => ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class ChatScreenState extends State<ChatScreen> {
   final scroll = ScrollController();
   final input = TextEditingController();
   final focus = FocusNode();
@@ -137,6 +138,20 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
     });
+  }
+
+  void applyLaunch({
+    String? prompt,
+    List<Attachment> attachments = const [],
+    bool listen = false,
+  }) {
+    if (prompt != null && prompt.isNotEmpty) {
+      input.text = prompt;
+      input.selection = TextSelection.collapsed(offset: prompt.length);
+      focus.requestFocus();
+    }
+    if (attachments.isNotEmpty) setState(() => this.attachments.addAll(attachments));
+    if (listen) _voice();
   }
 
   Future<void> _loadSlash() async {
@@ -274,7 +289,15 @@ class _ChatScreenState extends State<ChatScreen> {
       listenable: agent,
       builder: (context, _) => Scaffold(
         appBar: AppBar(
-          leading: Navigator.of(context).canPop()
+          automaticallyImplyLeading: !widget.embedded,
+          leading: widget.embedded
+              ? IconButton(
+                  tooltip: tr('Settings'),
+                  icon: const Icon(LucideIcons.settings, size: 20),
+                  onPressed: () =>
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsHub(agent: agent))),
+                )
+              : Navigator.of(context).canPop()
               ? IconButton(
                   tooltip: tr('Back'),
                   icon: const Icon(LucideIcons.chevronLeft, size: 24),
@@ -308,17 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Stack(
                 children: [
                   agent.entries.isEmpty
-                      ? _EmptyState(
-                          agent: agent,
-                          onConnect: _connectProvider,
-                          onPrompt: (prompt) {
-                            input.text = prompt;
-                            input.selection = TextSelection.collapsed(offset: prompt.length);
-                            focus.requestFocus();
-                          },
-                          onClone: () =>
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReposScreen(agent: agent))),
-                        )
+                      ? _EmptyState(agent: agent, onConnect: _connectProvider)
                       : NotificationListener<TranscriptGrew>(
                           onNotification: (_) {
                             if (followBottom) _jumpToBottom();
@@ -377,6 +390,9 @@ class _ChatScreenState extends State<ChatScreen> {
               attachments: attachments,
               onRemoveAttachment: (a) => setState(() => attachments.remove(a)),
               onPickModel: () => showModelSheet(context, agent),
+              extraBottom: widget.embedded && MediaQuery.viewInsetsOf(context).bottom == 0
+                  ? 96 + MediaQuery.paddingOf(context).bottom
+                  : 0,
             ),
           ],
         ),
@@ -459,98 +475,39 @@ class _Title extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.agent, required this.onConnect, required this.onPrompt, required this.onClone});
+  const _EmptyState({required this.agent, required this.onConnect});
   final AgentController agent;
   final VoidCallback onConnect;
-  final void Function(String prompt) onPrompt;
-  final VoidCallback onClone;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final ready = agent.hasModel;
-    final suggestions = [
-      (
-        LucideIcons.layoutTemplate,
-        const Color(0xFF8B5CF6),
-        tr('Build a web app'),
-        tr('A polished single-page app I can preview'),
-        tr('Build me a polished, mobile-first web app: '),
-      ),
-      (SimpleIcons.github, p.text, tr('Clone a repo'), tr('Pick one of your GitHub repositories'), null),
-      (
-        SimpleIcons.python,
-        const Color(0xFF3B82F6),
-        tr('Set up Python'),
-        tr('Install Python and packages in Linux'),
-        tr('Set up a Python environment in the Linux container with requests and rich, then write a hello script.'),
-      ),
-      (
-        LucideIcons.folderSearch,
-        const Color(0xFF14B8A6),
-        tr('Explore workspace'),
-        tr('Summarize what is on this device'),
-        tr('Look around the workspace and give me a short tour of what is there.'),
-      ),
-    ];
-    return LayoutBuilder(
-      builder: (context, box) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: box.maxHeight - 40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Illustration('ai', height: 190),
-              const SizedBox(height: 24),
-              Text(
-                ready ? tr('What should we build?') : tr('Connect a model to begin'),
-                style: text.displaySmall?.copyWith(fontSize: 26),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                ready
-                    ? tr('pi codes, runs commands, installs packages and deploys, right here on your phone.')
-                    : tr('The agent runs on your phone. Sign in to a provider or add an API key to choose its model.'),
-                style: text.bodyMedium?.copyWith(color: p.muted),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              if (!ready)
-                SizedBox(
-                  width: 260,
-                  child: PrimaryButton(label: tr('Connect a model'), icon: LucideIcons.sparkles, onPressed: onConnect),
-                )
-              else
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 1.35,
-                  children: [
-                    for (final (icon, color, title, blurb, prompt) in suggestions)
-                      SurfaceCard(
-                        padding: const EdgeInsets.all(14),
-                        onTap: prompt == null ? onClone : () => onPrompt(prompt),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            IconTile(icon: icon, color: color, size: 32),
-                            const Spacer(),
-                            Text(title, style: text.titleSmall),
-                            const SizedBox(height: 2),
-                            Text(blurb, maxLines: 2, overflow: TextOverflow.ellipsis, style: text.bodySmall),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              ready ? tr('What should we build?') : tr('Connect a model to begin'),
+              style: text.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              ready
+                  ? tr('Ask pi to build, fix or deploy.')
+                  : tr('Sign in to a provider or add an API key to choose its model.'),
+              style: text.bodyMedium?.copyWith(color: p.muted),
+              textAlign: TextAlign.center,
+            ),
+            if (!ready) ...[
+              const SizedBox(height: 20),
+              FilledButton(onPressed: onConnect, child: Text(tr('Connect a model'))),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -569,6 +526,7 @@ class _Composer extends StatelessWidget {
     required this.attachments,
     required this.onRemoveAttachment,
     required this.onPickModel,
+    this.extraBottom = 0,
   });
 
   final TextEditingController controller;
@@ -581,6 +539,7 @@ class _Composer extends StatelessWidget {
   final List<Attachment> attachments;
   final void Function(Attachment) onRemoveAttachment;
   final VoidCallback onPickModel;
+  final double extraBottom;
 
   @override
   Widget build(BuildContext context) {
@@ -590,8 +549,9 @@ class _Composer extends StatelessWidget {
 
     return SafeArea(
       top: false,
+      bottom: extraBottom == 0,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+        padding: EdgeInsets.fromLTRB(12, 6, 12, 12 + extraBottom),
         child: ListenableBuilder(
           listenable: focus,
           builder: (context, child) => AnimatedContainer(
