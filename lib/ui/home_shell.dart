@@ -231,35 +231,19 @@ class _NavBar extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
-            // Backdrop only: IgnorePointer keeps its empty areas from eating
-            // touches, so a swipe starting over the pill still scrolls the page.
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: 12,
-              child: IgnorePointer(
-                child: Container(
-                  height: 68,
-                  decoration: BoxDecoration(
-                    color: p.nav,
-                    borderRadius: BorderRadius.circular(34),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.22),
-                        blurRadius: 26,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
             Positioned(
               left: 18,
               right: 18,
               bottom: 12,
               child: Container(
                 height: 68,
+                decoration: BoxDecoration(
+                  color: p.nav,
+                  borderRadius: BorderRadius.circular(34),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 26, offset: const Offset(0, 12)),
+                  ],
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Row(
                   children: [
@@ -306,9 +290,7 @@ class _NavItemState extends State<_NavItem> {
       selected: selected,
       label: widget.label,
       child: GestureDetector(
-        // Translucent over an ignored child: taps land here, drags fall
-        // through to the scrollable underneath.
-        behavior: HitTestBehavior.translucent,
+        behavior: HitTestBehavior.opaque,
         onTapDown: (_) => setState(() => pressed = true),
         onTapCancel: () => setState(() => pressed = false),
         onTapUp: (_) {
@@ -316,10 +298,9 @@ class _NavItemState extends State<_NavItem> {
           HapticFeedback.selectionClick();
           widget.onTap();
         },
-        child: IgnorePointer(
-          child: SizedBox.square(
-            dimension: 52,
-            child: Stack(
+        child: SizedBox.square(
+          dimension: 52,
+          child: Stack(
             alignment: Alignment.center,
             children: [
               // The white disc grows in with a little overshoot.
@@ -344,7 +325,6 @@ class _NavItemState extends State<_NavItem> {
                 ),
               ),
             ],
-            ),
           ),
         ),
       ),
@@ -372,9 +352,6 @@ class _CreateButtonState extends State<_CreateButton> {
       button: true,
       label: tr('New chat'),
       child: GestureDetector(
-        // Translucent over an ignored child: taps land here, drags fall
-        // through to the scrollable underneath.
-        behavior: HitTestBehavior.translucent,
         onTapDown: (_) => setState(() => pressed = true),
         onTapCancel: () => setState(() => pressed = false),
         onTapUp: (_) {
@@ -385,28 +362,26 @@ class _CreateButtonState extends State<_CreateButton> {
           });
           widget.onTap();
         },
-        child: IgnorePointer(
-          child: AnimatedScale(
-            scale: pressed ? 0.9 : 1,
-            duration: Duration(milliseconds: 160),
-            curve: Curves.easeOutBack,
-            child: Container(
-              width: 66,
-              height: 66,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: p.accent,
-                border: Border.all(color: p.bg, width: 5),
-                boxShadow: [
-                  BoxShadow(color: p.accent.withValues(alpha: 0.45), blurRadius: 22, offset: Offset(0, 8)),
-                ],
-              ),
-              child: AnimatedRotation(
-                turns: turns,
-                duration: Duration(milliseconds: 420),
-                curve: Curves.easeOutBack,
-                child: Icon(LucideIcons.plus, size: 28, color: Colors.white),
-              ),
+        child: AnimatedScale(
+          scale: pressed ? 0.9 : 1,
+          duration: Duration(milliseconds: 160),
+          curve: Curves.easeOutBack,
+          child: Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: p.accent,
+              border: Border.all(color: p.bg, width: 5),
+              boxShadow: [
+                BoxShadow(color: p.accent.withValues(alpha: 0.45), blurRadius: 22, offset: Offset(0, 8)),
+              ],
+            ),
+            child: AnimatedRotation(
+              turns: turns,
+              duration: Duration(milliseconds: 420),
+              curve: Curves.easeOutBack,
+              child: Icon(LucideIcons.plus, size: 28, color: Colors.white),
             ),
           ),
         ),
@@ -712,10 +687,8 @@ class _ProjectsTabState extends State<_ProjectsTab> {
     );
     if (!mounted || action == null) return;
 
-    final sessions = await agent.listSessions();
-    if (!mounted) return;
     final chats = [
-      for (final s in sessions)
+      for (final s in await agent.listSessions())
         if (s.cwd == pr.path || s.cwd.startsWith('${pr.path}/')) s,
     ];
     final ok = await showDialog<bool>(

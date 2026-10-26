@@ -31,25 +31,10 @@ class SkillsScreen extends StatefulWidget {
   State<SkillsScreen> createState() => _SkillsScreenState();
 }
 
-class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver {
+class _SkillsScreenState extends State<SkillsScreen> {
   Integrations get it => widget.agent.integrations;
-  final list = ScrollController();
-  double _userOffset = 0;
-  bool _undoingJump = false;
-
-  /// Where the user was before the app went to the background; OPPO's
-  /// OplusScrollToTopManager jumps scrollables back to top ~1s after the
-  /// window regains focus, so the offset is restored right after that.
-  double offsetBeforePause = 0;
-
   late Future<List<SkillInfo>> installed = it.skills();
   late Future<List<SkillHit>> recommended = it.searchSkills('');
-
-  // Derived once: a fresh future on every build resets the FutureBuilder,
-  // collapses the section mid-scroll and snaps the offset back toward the top.
-  late Future<List<SkillHit>> recommendedVisible = recommended.then(
-    (l) => l.where((h) => !h.installed).take(6).toList(),
-  );
   Future<List<SkillHit>>? results;
   final query = TextEditingController();
   final link = TextEditingController();
@@ -60,8 +45,6 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    list.addListener(_guardScroll);
     // A listener, not onChanged: pasted and IME-committed text count too.
     query.addListener(() {
       if (query.text == lastQuery) return;
@@ -72,61 +55,10 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    list.removeListener(_guardScroll);
     debounce?.cancel();
     query.dispose();
     link.dispose();
-    list.dispose();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      if (list.hasClients) offsetBeforePause = list.offset;
-    } else if (state == AppLifecycleState.resumed) {
-      _undoSystemScrollToTop();
-    }
-  }
-
-  /// The system jump lands ~1s after focus; watch for a few seconds and undo
-  /// it the moment it lands, before the user's next swipe.
-  Future<void> _undoSystemScrollToTop() async {
-    for (var i = 0; i < 30; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      if (!mounted || !list.hasClients) return;
-      if (list.position.isScrollingNotifier.value) continue;
-      if (list.offset < 1 && offsetBeforePause > 1) {
-        list.jumpTo(offsetBeforePause);
-        return;
-      }
-    }
-  }
-
-  /// The same manager also snaps the list on other triggers. While the list is
-  /// idle any big drop to the top is therefore external, not a finger: a fast
-  /// fling moves far less than this per frame. Undo it on the spot.
-  void _guardScroll() {
-    if (_undoingJump || !list.hasClients) return;
-    final offset = list.offset;
-    if (list.position.isScrollingNotifier.value) {
-      if (_userOffset - offset > 800) {
-        _undoingJump = true;
-        list.jumpTo(_userOffset);
-        _undoingJump = false;
-      } else {
-        _userOffset = offset;
-      }
-      return;
-    }
-    if (offset < 1 && _userOffset > 400) {
-      _undoingJump = true;
-      list.jumpTo(_userOffset);
-      _undoingJump = false;
-      return;
-    }
-    _userOffset = offset;
   }
 
   void _onQuery(String v) {
@@ -142,7 +74,6 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
   void _reload() => setState(() {
     installed = it.skills();
     recommended = it.searchSkills('');
-    recommendedVisible = recommended.then((l) => l.where((h) => !h.installed).take(6).toList());
     if (query.text.trim().isNotEmpty) results = it.searchSkills(query.text.trim());
   });
 
@@ -239,7 +170,6 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: Text(tr('Skills'))),
       body: ListView(
-        controller: list,
         padding: widget.embedded
             ? EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 12, 20, 130)
             : const EdgeInsets.fromLTRB(16, 4, 16, 40),
@@ -248,9 +178,6 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
           TextField(
             controller: query,
             textInputAction: TextInputAction.search,
-            // ColorOS scrolls the page to top on every focus/IME change;
-            // keep the field focused while scrolling so that never fires.
-            onTapOutside: (_) {},
             onSubmitted: (v) {
               debounce?.cancel();
               setState(() {
@@ -282,7 +209,7 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
           ] else ...[
             SectionLabel(tr('Recommended')),
             _HitList(
-              future: recommendedVisible,
+              future: recommended.then((l) => l.where((h) => !h.installed).take(6).toList()),
               installing: installing,
               onInstall: _installHit,
               emptyText: tr('You have all the recommended skills.'),
@@ -325,7 +252,6 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
                           controller: link,
                           autocorrect: false,
                           style: const TextStyle(fontFamily: mono, fontSize: 13),
-                          onTapOutside: (_) {},
                           decoration: InputDecoration(
                             hintText: tr('owner/repo/skills/name'),
                             prefixIcon: Icon(LucideIcons.link, size: 16),
