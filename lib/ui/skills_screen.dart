@@ -185,6 +185,9 @@ class _SkillsScreenState extends State<SkillsScreen> {
           TextField(
             controller: query,
             textInputAction: TextInputAction.search,
+            // ColorOS scrolls the page to top on every focus/IME change;
+            // keep the field focused while scrolling so that never fires.
+            onTapOutside: (_) {},
             onSubmitted: (v) {
               debounce?.cancel();
               setState(() {
@@ -259,6 +262,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
                           controller: link,
                           autocorrect: false,
                           style: const TextStyle(fontFamily: mono, fontSize: 13),
+                          onTapOutside: (_) {},
                           decoration: InputDecoration(
                             hintText: tr('owner/repo/skills/name'),
                             prefixIcon: Icon(LucideIcons.link, size: 16),
