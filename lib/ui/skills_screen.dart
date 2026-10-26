@@ -35,6 +35,12 @@ class _SkillsScreenState extends State<SkillsScreen> {
   Integrations get it => widget.agent.integrations;
   late Future<List<SkillInfo>> installed = it.skills();
   late Future<List<SkillHit>> recommended = it.searchSkills('');
+
+  // Derived once: a fresh future on every build resets the FutureBuilder,
+  // collapses the section mid-scroll and snaps the offset back toward the top.
+  late Future<List<SkillHit>> recommendedVisible = recommended.then(
+    (l) => l.where((h) => !h.installed).take(6).toList(),
+  );
   Future<List<SkillHit>>? results;
   final query = TextEditingController();
   final link = TextEditingController();
@@ -74,6 +80,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
   void _reload() => setState(() {
     installed = it.skills();
     recommended = it.searchSkills('');
+    recommendedVisible = recommended.then((l) => l.where((h) => !h.installed).take(6).toList());
     if (query.text.trim().isNotEmpty) results = it.searchSkills(query.text.trim());
   });
 
@@ -209,7 +216,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
           ] else ...[
             SectionLabel(tr('Recommended')),
             _HitList(
-              future: recommended.then((l) => l.where((h) => !h.installed).take(6).toList()),
+              future: recommendedVisible,
               installing: installing,
               onInstall: _installHit,
               emptyText: tr('You have all the recommended skills.'),
