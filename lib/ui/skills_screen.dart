@@ -31,8 +31,15 @@ class SkillsScreen extends StatefulWidget {
   State<SkillsScreen> createState() => _SkillsScreenState();
 }
 
-class _SkillsScreenState extends State<SkillsScreen> {
+class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver {
   Integrations get it => widget.agent.integrations;
+  final list = ScrollController();
+
+  /// Where the user was before the app went to the background; OPPO's
+  /// OplusScrollToTopManager jumps scrollables back to top ~1s after the
+  /// window regains focus, so the offset is restored right after that.
+  double offsetBeforePause = 0;
+
   late Future<List<SkillInfo>> installed = it.skills();
   late Future<List<SkillHit>> recommended = it.searchSkills('');
 
@@ -51,6 +58,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // A listener, not onChanged: pasted and IME-committed text count too.
     query.addListener(() {
       if (query.text == lastQuery) return;
@@ -61,10 +69,30 @@ class _SkillsScreenState extends State<SkillsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     debounce?.cancel();
     query.dispose();
     link.dispose();
+    list.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (list.hasClients) offsetBeforePause = list.offset;
+    } else if (state == AppLifecycleState.resumed) {
+      _undoSystemScrollToTop();
+    }
+  }
+
+  /// The system jump lands ~1s after focus; undo it once it has landed, unless
+  /// the user is already scrolling (then their finger wins).
+  Future<void> _undoSystemScrollToTop() async {
+    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    if (!mounted || !list.hasClients) return;
+    if (list.position.isScrollingNotifier.value) return;
+    if (list.offset < 1 && offsetBeforePause > 1) list.jumpTo(offsetBeforePause);
   }
 
   void _onQuery(String v) {
@@ -177,6 +205,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: Text(tr('Skills'))),
       body: ListView(
+        controller: list,
         padding: widget.embedded
             ? EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 12, 20, 130)
             : const EdgeInsets.fromLTRB(16, 4, 16, 40),
