@@ -34,6 +34,8 @@ class SkillsScreen extends StatefulWidget {
 class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver {
   Integrations get it => widget.agent.integrations;
   final list = ScrollController();
+  double _userOffset = 0;
+  bool _undoingJump = false;
 
   /// Where the user was before the app went to the background; OPPO's
   /// OplusScrollToTopManager jumps scrollables back to top ~1s after the
@@ -59,6 +61,7 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    list.addListener(_guardScroll);
     // A listener, not onChanged: pasted and IME-committed text count too.
     query.addListener(() {
       if (query.text == lastQuery) return;
@@ -70,6 +73,7 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    list.removeListener(_guardScroll);
     debounce?.cancel();
     query.dispose();
     link.dispose();
@@ -86,13 +90,43 @@ class _SkillsScreenState extends State<SkillsScreen> with WidgetsBindingObserver
     }
   }
 
-  /// The system jump lands ~1s after focus; undo it once it has landed, unless
-  /// the user is already scrolling (then their finger wins).
+  /// The system jump lands ~1s after focus; watch for a few seconds and undo
+  /// it the moment it lands, before the user's next swipe.
   Future<void> _undoSystemScrollToTop() async {
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
-    if (!mounted || !list.hasClients) return;
-    if (list.position.isScrollingNotifier.value) return;
-    if (list.offset < 1 && offsetBeforePause > 1) list.jumpTo(offsetBeforePause);
+    for (var i = 0; i < 30; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (!mounted || !list.hasClients) return;
+      if (list.position.isScrollingNotifier.value) continue;
+      if (list.offset < 1 && offsetBeforePause > 1) {
+        list.jumpTo(offsetBeforePause);
+        return;
+      }
+    }
+  }
+
+  /// The same manager also snaps the list on other triggers. While the list is
+  /// idle any big drop to the top is therefore external, not a finger: a fast
+  /// fling moves far less than this per frame. Undo it on the spot.
+  void _guardScroll() {
+    if (_undoingJump || !list.hasClients) return;
+    final offset = list.offset;
+    if (list.position.isScrollingNotifier.value) {
+      if (_userOffset - offset > 800) {
+        _undoingJump = true;
+        list.jumpTo(_userOffset);
+        _undoingJump = false;
+      } else {
+        _userOffset = offset;
+      }
+      return;
+    }
+    if (offset < 1 && _userOffset > 400) {
+      _undoingJump = true;
+      list.jumpTo(_userOffset);
+      _undoingJump = false;
+      return;
+    }
+    _userOffset = offset;
   }
 
   void _onQuery(String v) {
