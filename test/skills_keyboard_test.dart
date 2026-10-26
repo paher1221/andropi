@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:andropi/agent/agent_client.dart';
 import 'package:andropi/agent/agent_controller.dart';
 import 'package:andropi/ui/skills_screen.dart';
 import 'package:andropi/ui/theme.dart';
